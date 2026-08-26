@@ -96,10 +96,10 @@ NumPy 2.5.1.
 
 | Case | mojo-pykalman | pykalman | Speedup |
 |---|---:|---:|---:|
-| filter, T=20k, state=4, obs=2 | 13.35 ms | 5776.72 ms | 432.71x |
-| loglikelihood, T=20k, state=4, obs=2 | 13.04 ms | 13589.72 ms | 1042.00x |
-| smooth, T=8k, state=8, obs=4 | 52.58 ms | 3332.95 ms | 63.39x |
-| EM all, 1 iter, T=2k, state=6, obs=3 | 12.98 ms | 1333.28 ms | 102.73x |
+| filter, T=20k, state=4, obs=2 | 8.38 ms | 5603.98 ms | 668.74x |
+| loglikelihood, T=20k, state=4, obs=2 | 7.56 ms | 12231.78 ms | 1618.78x |
+| smooth, T=8k, state=8, obs=4 | 33.21 ms | 3084.53 ms | 92.87x |
+| EM all, 1 iter, T=2k, state=6, obs=3 | 11.58 ms | 1183.47 ms | 102.16x |
 
 `pykalman` performs a Python loop and calls SciPy's pseudoinverse once per
 timestep. The Mojo path performs the same dense recurrences in a single FFI
@@ -110,7 +110,8 @@ There is no GPU path. Although individual dense products become
 compute-intensive at large state sizes, every timestep depends on the previous
 one and the per-step matrices in the measured range are too small to sustain
 GPU occupancy. Transfers and repeated launches would dominate. CPU threading
-is likewise not used for these fine-grained, timestep-dependent operations.
+is likewise not used: only rows within each small product are independent, and
+launching work at every step costs more than it saves on the profiled sizes.
 
 ## How it works
 
@@ -121,11 +122,13 @@ outputs, and scratch memory; raw buffer addresses cross the C ABI as 64-bit
 integers and Mojo reconstructs mutable pointers inside each exported wrapper.
 There is no ownership transfer or allocation inside the shared library.
 
-The filter and smoother use SIMD dense products with scalar remainder loops and
-direct Cholesky solves for symmetric positive-definite systems. Smoother scratch
-uses three state-square buffers, and the filter gain reuses scratch instead of
-allocating a sequence-sized output that no public method consumes. The EM
-E-step stays in Mojo, as do the M-step's time-indexed accumulations; NumPy
-computes the two parameter pseudoinverses after those statistics have been
-reduced to small state-sized matrices. The update order matches upstream
-exactly.
+The filter and smoother use four-row register-blocked SIMD dense products with
+scalar remainder loops and four-right-hand-side SIMD Cholesky solves for
+symmetric positive-definite systems. Smoother scratch uses three state-square
+buffers, and the filter gain reuses scratch instead of allocating a
+sequence-sized output that no public method consumes. Filter and loglikelihood
+calls also keep only the current predicted state; smooth and EM retain the full
+prediction history they require. The EM E-step stays in Mojo, as do the
+M-step's time-indexed accumulations; NumPy computes the two parameter
+pseudoinverses after those statistics have been reduced to small state-sized
+matrices. The update order matches upstream exactly.

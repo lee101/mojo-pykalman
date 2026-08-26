@@ -166,7 +166,7 @@ def _filter_numpy(data, missing, parameters):
     )
 
 
-def _run_filter(data, missing, parameters):
+def _run_filter(data, missing, parameters, *, store_predictions=False):
     A, b, Q, C, d, R, mu0, P0 = parameters
     timesteps, n_obs = data.shape
     n_state = mu0.shape[0]
@@ -179,8 +179,9 @@ def _run_filter(data, missing, parameters):
         (R, timesteps, 2, "observation_covariance"),
     ):
         _check_length(value, needed, ndim, name)
-    predicted_means = np.empty((timesteps, n_state))
-    predicted_covariances = np.empty((timesteps, n_state, n_state))
+    prediction_steps = timesteps if store_predictions else 1
+    predicted_means = np.empty((prediction_steps, n_state))
+    predicted_covariances = np.empty((prediction_steps, n_state, n_state))
     filtered_means = np.empty((timesteps, n_state))
     filtered_covariances = np.empty((timesteps, n_state, n_state))
     loglikelihoods = np.empty(timesteps)
@@ -212,6 +213,7 @@ def _run_filter(data, missing, parameters):
         _varying(R, 2),
         _varying(b, 1),
         _varying(d, 1),
+        int(store_predictions),
     )
     if not status:
         return _filter_numpy(data, missing, parameters)
@@ -398,7 +400,7 @@ class KalmanFilter:
 
     def smooth(self, X):
         data, missing, parameters = self._observations_and_parameters(X)
-        inference = _run_filter(data, missing, parameters)
+        inference = _run_filter(data, missing, parameters, store_predictions=True)
         smoothing = _run_smooth(parameters[0], inference)
         return smoothing.means, smoothing.covariances
 
@@ -553,7 +555,9 @@ class KalmanFilter:
         n_state = self.n_dim_state
         for _ in range(n_iter):
             A, b, Q, C, d, R, mu0, P0 = parameters
-            inference = _run_filter(data, missing, tuple(parameters))
+            inference = _run_filter(
+                data, missing, tuple(parameters), store_predictions=True
+            )
             smoothing = _run_smooth(A, inference)
             pairwise = _smooth_pair(smoothing)
 

@@ -94,7 +94,34 @@ def matrix_multiply(
     inner: Int,
     columns: Int,
 ):
-    for i in range(rows):
+    var i = 0
+    while i + 4 <= rows:
+        var j = 0
+        while j + W <= columns:
+            var v0 = SIMD[DType.float64, W](0.0)
+            var v1 = SIMD[DType.float64, W](0.0)
+            var v2 = SIMD[DType.float64, W](0.0)
+            var v3 = SIMD[DType.float64, W](0.0)
+            for k in range(inner):
+                var rhs_vector = rhs.load[width=W](k * columns + j)
+                v0 += lhs[i * inner + k] * rhs_vector
+                v1 += lhs[(i + 1) * inner + k] * rhs_vector
+                v2 += lhs[(i + 2) * inner + k] * rhs_vector
+                v3 += lhs[(i + 3) * inner + k] * rhs_vector
+            dst.store(i * columns + j, v0)
+            dst.store((i + 1) * columns + j, v1)
+            dst.store((i + 2) * columns + j, v2)
+            dst.store((i + 3) * columns + j, v3)
+            j += W
+        while j < columns:
+            for row in range(i, i + 4):
+                var result = 0.0
+                for k in range(inner):
+                    result += lhs[row * inner + k] * rhs[k * columns + j]
+                dst[row * columns + j] = result
+            j += 1
+        i += 4
+    while i < rows:
         row_times_matrix(
             lhs + i * inner,
             rhs,
@@ -102,6 +129,7 @@ def matrix_multiply(
             inner,
             columns,
         )
+        i += 1
 
 
 def matrix_multiply_add(
@@ -113,7 +141,34 @@ def matrix_multiply_add(
     inner: Int,
     columns: Int,
 ):
-    for i in range(rows):
+    var i = 0
+    while i + 4 <= rows:
+        var j = 0
+        while j + W <= columns:
+            var v0 = base.load[width=W](i * columns + j)
+            var v1 = base.load[width=W]((i + 1) * columns + j)
+            var v2 = base.load[width=W]((i + 2) * columns + j)
+            var v3 = base.load[width=W]((i + 3) * columns + j)
+            for k in range(inner):
+                var rhs_vector = rhs.load[width=W](k * columns + j)
+                v0 += lhs[i * inner + k] * rhs_vector
+                v1 += lhs[(i + 1) * inner + k] * rhs_vector
+                v2 += lhs[(i + 2) * inner + k] * rhs_vector
+                v3 += lhs[(i + 3) * inner + k] * rhs_vector
+            dst.store(i * columns + j, v0)
+            dst.store((i + 1) * columns + j, v1)
+            dst.store((i + 2) * columns + j, v2)
+            dst.store((i + 3) * columns + j, v3)
+            j += W
+        while j < columns:
+            for row in range(i, i + 4):
+                var result = base[row * columns + j]
+                for k in range(inner):
+                    result += lhs[row * inner + k] * rhs[k * columns + j]
+                dst[row * columns + j] = result
+            j += 1
+        i += 4
+    while i < rows:
         row_times_matrix_add(
             lhs + i * inner,
             rhs,
@@ -122,6 +177,7 @@ def matrix_multiply_add(
             inner,
             columns,
         )
+        i += 1
 
 
 def matrix_multiply_transpose_add(
@@ -135,12 +191,44 @@ def matrix_multiply_transpose_add(
     scale: Float64,
 ):
     for i in range(rows):
-        for j in range(columns):
+        var j = 0
+        while j + 4 <= columns:
+            var v0 = SIMD[DType.float64, W](0.0)
+            var v1 = SIMD[DType.float64, W](0.0)
+            var v2 = SIMD[DType.float64, W](0.0)
+            var v3 = SIMD[DType.float64, W](0.0)
+            var k = 0
+            while k + W <= inner:
+                var lhs_vector = lhs.load[width=W](i * inner + k)
+                v0 += lhs_vector * rhs.load[width=W](j * inner + k)
+                v1 += lhs_vector * rhs.load[width=W]((j + 1) * inner + k)
+                v2 += lhs_vector * rhs.load[width=W]((j + 2) * inner + k)
+                v3 += lhs_vector * rhs.load[width=W]((j + 3) * inner + k)
+                k += W
+            var r0 = v0.reduce_add()
+            var r1 = v1.reduce_add()
+            var r2 = v2.reduce_add()
+            var r3 = v3.reduce_add()
+            while k < inner:
+                var lhs_value = lhs[i * inner + k]
+                r0 += lhs_value * rhs[j * inner + k]
+                r1 += lhs_value * rhs[(j + 1) * inner + k]
+                r2 += lhs_value * rhs[(j + 2) * inner + k]
+                r3 += lhs_value * rhs[(j + 3) * inner + k]
+                k += 1
+            var offset = i * columns + j
+            dst[offset] = base[offset] + scale * r0
+            dst[offset + 1] = base[offset + 1] + scale * r1
+            dst[offset + 2] = base[offset + 2] + scale * r2
+            dst[offset + 3] = base[offset + 3] + scale * r3
+            j += 4
+        while j < columns:
             dst[i * columns + j] = (
                 base[i * columns + j]
                 + scale
                 * dot(lhs + i * inner, rhs + j * inner, inner)
             )
+            j += 1
 
 
 def matrix_multiply_transpose(
@@ -152,10 +240,42 @@ def matrix_multiply_transpose(
     inner: Int,
 ):
     for i in range(rows):
-        for j in range(columns):
+        var j = 0
+        while j + 4 <= columns:
+            var v0 = SIMD[DType.float64, W](0.0)
+            var v1 = SIMD[DType.float64, W](0.0)
+            var v2 = SIMD[DType.float64, W](0.0)
+            var v3 = SIMD[DType.float64, W](0.0)
+            var k = 0
+            while k + W <= inner:
+                var lhs_vector = lhs.load[width=W](i * inner + k)
+                v0 += lhs_vector * rhs.load[width=W](j * inner + k)
+                v1 += lhs_vector * rhs.load[width=W]((j + 1) * inner + k)
+                v2 += lhs_vector * rhs.load[width=W]((j + 2) * inner + k)
+                v3 += lhs_vector * rhs.load[width=W]((j + 3) * inner + k)
+                k += W
+            var r0 = v0.reduce_add()
+            var r1 = v1.reduce_add()
+            var r2 = v2.reduce_add()
+            var r3 = v3.reduce_add()
+            while k < inner:
+                var lhs_value = lhs[i * inner + k]
+                r0 += lhs_value * rhs[j * inner + k]
+                r1 += lhs_value * rhs[(j + 1) * inner + k]
+                r2 += lhs_value * rhs[(j + 2) * inner + k]
+                r3 += lhs_value * rhs[(j + 3) * inner + k]
+                k += 1
+            var offset = i * columns + j
+            dst[offset] = r0
+            dst[offset + 1] = r1
+            dst[offset + 2] = r2
+            dst[offset + 3] = r3
+            j += 4
+        while j < columns:
             dst[i * columns + j] = dot(
                 lhs + i * inner, rhs + j * inner, inner
             )
+            j += 1
 
 
 def factor_spd(src: Ptr, chol: Ptr, d: Int) -> Bool:
@@ -176,7 +296,77 @@ def factor_spd(src: Ptr, chol: Ptr, d: Int) -> Bool:
 
 
 def solve_spd_rows(rhs: Ptr, dst: Ptr, chol: Ptr, rows: Int, d: Int):
-    for row in range(rows):
+    var row = 0
+    while row + 4 <= rows:
+        var s0 = dst + row * d
+        var s1 = dst + (row + 1) * d
+        var s2 = dst + (row + 2) * d
+        var s3 = dst + (row + 3) * d
+        var b0 = rhs + row * d
+        var b1 = rhs + (row + 1) * d
+        var b2 = rhs + (row + 2) * d
+        var b3 = rhs + (row + 3) * d
+        for i in range(d):
+            var v0 = SIMD[DType.float64, W](0.0)
+            var v1 = SIMD[DType.float64, W](0.0)
+            var v2 = SIMD[DType.float64, W](0.0)
+            var v3 = SIMD[DType.float64, W](0.0)
+            var k = 0
+            while k + W <= i:
+                var factor = chol.load[width=W](i * d + k)
+                v0 += factor * s0.load[width=W](k)
+                v1 += factor * s1.load[width=W](k)
+                v2 += factor * s2.load[width=W](k)
+                v3 += factor * s3.load[width=W](k)
+                k += W
+            var a0 = v0.reduce_add()
+            var a1 = v1.reduce_add()
+            var a2 = v2.reduce_add()
+            var a3 = v3.reduce_add()
+            while k < i:
+                var factor = chol[i * d + k]
+                a0 += factor * s0[k]
+                a1 += factor * s1[k]
+                a2 += factor * s2[k]
+                a3 += factor * s3[k]
+                k += 1
+            var diagonal = chol[i * d + i]
+            s0[i] = (b0[i] - a0) / diagonal
+            s1[i] = (b1[i] - a1) / diagonal
+            s2[i] = (b2[i] - a2) / diagonal
+            s3[i] = (b3[i] - a3) / diagonal
+        for ri in range(d):
+            var i = d - 1 - ri
+            var v0 = SIMD[DType.float64, W](0.0)
+            var v1 = SIMD[DType.float64, W](0.0)
+            var v2 = SIMD[DType.float64, W](0.0)
+            var v3 = SIMD[DType.float64, W](0.0)
+            var k = i + 1
+            while k + W <= d:
+                var factor = chol.load[width=W](i * d + k)
+                v0 += factor * s0.load[width=W](k)
+                v1 += factor * s1.load[width=W](k)
+                v2 += factor * s2.load[width=W](k)
+                v3 += factor * s3.load[width=W](k)
+                k += W
+            var a0 = v0.reduce_add()
+            var a1 = v1.reduce_add()
+            var a2 = v2.reduce_add()
+            var a3 = v3.reduce_add()
+            while k < d:
+                var factor = chol[i * d + k]
+                a0 += factor * s0[k]
+                a1 += factor * s1[k]
+                a2 += factor * s2[k]
+                a3 += factor * s3[k]
+                k += 1
+            var diagonal = chol[i * d + i]
+            s0[i] = (s0[i] - a0) / diagonal
+            s1[i] = (s1[i] - a1) / diagonal
+            s2[i] = (s2[i] - a2) / diagonal
+            s3[i] = (s3[i] - a3) / diagonal
+        row += 4
+    while row < rows:
         var solution = dst + row * d
         var values = rhs + row * d
         for i in range(d):
@@ -188,6 +378,7 @@ def solve_spd_rows(rhs: Ptr, dst: Ptr, chol: Ptr, rows: Int, d: Int):
                 chol + i * d + i + 1, solution + i + 1, d - i - 1
             )
             solution[i] = acc / chol[i * d + i]
+        row += 1
 
 
 def filter_impl(
@@ -216,6 +407,7 @@ def filter_impl(
     observation_covariances_vary: Int,
     transition_offsets_vary: Int,
     observation_offsets_vary: Int,
+    store_predictions: Int,
 ) -> Bool:
     var width = n_state if n_state > n_obs else n_obs
     var block = width * width
@@ -225,8 +417,11 @@ def filter_impl(
     var temp = scratch + 3 * block
 
     for t in range(timesteps):
-        var predicted_mean = predicted_means + t * n_state
-        var predicted_covariance = predicted_covariances + t * n_state * n_state
+        var prediction_t = t if store_predictions != 0 else 0
+        var predicted_mean = predicted_means + prediction_t * n_state
+        var predicted_covariance = (
+            predicted_covariances + prediction_t * n_state * n_state
+        )
         if t == 0:
             copy(initial_mean, predicted_mean, n_state)
             copy(initial_covariance, predicted_covariance, n_state * n_state)
@@ -462,6 +657,7 @@ def mpk_filter(
     observation_covariances_vary: Int,
     transition_offsets_vary: Int,
     observation_offsets_vary: Int,
+    store_predictions: Int,
 ) abi("C") -> Int:
     if (
         observations == 0
@@ -495,6 +691,8 @@ def mpk_filter(
         or transition_offsets_vary > 1
         or observation_offsets_vary < 0
         or observation_offsets_vary > 1
+        or store_predictions < 0
+        or store_predictions > 1
     ):
         return 0
     return 1 if filter_impl(
@@ -523,6 +721,7 @@ def mpk_filter(
         observation_covariances_vary,
         transition_offsets_vary,
         observation_offsets_vary,
+        store_predictions,
     ) else 0
 
 

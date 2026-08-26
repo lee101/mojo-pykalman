@@ -16,7 +16,7 @@ LIB = os.environ.get("MOJO_PYKALMAN_LIB") or os.path.join(
 I = ctypes.c_int64
 
 _SIGNATURES = {
-    "mpk_filter": ([I] * 25, I),
+    "mpk_filter": ([I] * 26, I),
     "mpk_smooth": ([I] * 12, I),
     "mpk_smooth_pair": ([I] * 5, I),
     "mpk_em_observation_matrix_stats": ([I] * 11, I),

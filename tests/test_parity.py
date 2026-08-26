@@ -10,6 +10,7 @@ from pykalman import KalmanFilter as PythonKalmanFilter
 
 from mojo_pykalman import KalmanFilter
 from mojo_pykalman._lib import addr, lib
+from mojo_pykalman.standard import _run_filter
 
 
 @pytest.fixture
@@ -113,6 +114,24 @@ def test_simd_scalar_tail_matches_upstream():
     assert actual.loglikelihood(observations) == pytest.approx(
         expected.loglikelihood(observations), abs=2e-8
     )
+
+
+def test_filter_prediction_storage_modes_match(model_data):
+    observations, parameters = model_data
+    model = KalmanFilter(**parameters)
+    data, missing, initialized = model._observations_and_parameters(observations)
+    compact = _run_filter(data, missing, initialized)
+    full = _run_filter(data, missing, initialized, store_predictions=True)
+    assert compact.predicted_means.shape == (1, model.n_dim_state)
+    assert compact.predicted_covariances.shape == (
+        1,
+        model.n_dim_state,
+        model.n_dim_state,
+    )
+    assert full.predicted_means.shape[0] == len(observations)
+    assert np.array_equal(compact.filtered_means, full.filtered_means)
+    assert np.array_equal(compact.filtered_covariances, full.filtered_covariances)
+    assert np.array_equal(compact.loglikelihoods, full.loglikelihoods)
 
 
 @pytest.mark.parametrize("n_state,n_obs", [(1, 1), (3, 2), (4, 3), (6, 5), (7, 3)])
