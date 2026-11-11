@@ -19,7 +19,7 @@ def vector_at(x: Ptr, t: Int, width: Int, varying: Int) -> Ptr:
 def copy(src: Ptr, dst: Ptr, size: Int):
     var i = 0
     while i + W <= size:
-        dst.store(i, src.load[width=W](i))
+        dst.store(i, src.unsafe_load[width=W](i))
         i += W
     while i < size:
         dst[i] = src[i]
@@ -41,7 +41,7 @@ def dot(lhs: Ptr, rhs: Ptr, size: Int) -> Float64:
     var vector = SIMD[DType.float64, W](0.0)
     var i = 0
     while i + W <= size:
-        vector += lhs.load[width=W](i) * rhs.load[width=W](i)
+        vector += lhs.unsafe_load[width=W](i) * rhs.unsafe_load[width=W](i)
         i += W
     var result = vector.reduce_add()
     while i < size:
@@ -57,7 +57,7 @@ def row_times_matrix(
     while j + W <= columns:
         var vector = SIMD[DType.float64, W](0.0)
         for k in range(inner):
-            vector += lhs[k] * rhs.load[width=W](k * columns + j)
+            vector += lhs[k] * rhs.unsafe_load[width=W](k * columns + j)
         dst.store(j, vector)
         j += W
     while j < columns:
@@ -73,9 +73,9 @@ def row_times_matrix_add(
 ):
     var j = 0
     while j + W <= columns:
-        var vector = base.load[width=W](j)
+        var vector = base.unsafe_load[width=W](j)
         for k in range(inner):
-            vector += lhs[k] * rhs.load[width=W](k * columns + j)
+            vector += lhs[k] * rhs.unsafe_load[width=W](k * columns + j)
         dst.store(j, vector)
         j += W
     while j < columns:
@@ -103,7 +103,7 @@ def matrix_multiply(
             var v2 = SIMD[DType.float64, W](0.0)
             var v3 = SIMD[DType.float64, W](0.0)
             for k in range(inner):
-                var rhs_vector = rhs.load[width=W](k * columns + j)
+                var rhs_vector = rhs.unsafe_load[width=W](k * columns + j)
                 v0 += lhs[i * inner + k] * rhs_vector
                 v1 += lhs[(i + 1) * inner + k] * rhs_vector
                 v2 += lhs[(i + 2) * inner + k] * rhs_vector
@@ -145,12 +145,12 @@ def matrix_multiply_add(
     while i + 4 <= rows:
         var j = 0
         while j + W <= columns:
-            var v0 = base.load[width=W](i * columns + j)
-            var v1 = base.load[width=W]((i + 1) * columns + j)
-            var v2 = base.load[width=W]((i + 2) * columns + j)
-            var v3 = base.load[width=W]((i + 3) * columns + j)
+            var v0 = base.unsafe_load[width=W](i * columns + j)
+            var v1 = base.unsafe_load[width=W]((i + 1) * columns + j)
+            var v2 = base.unsafe_load[width=W]((i + 2) * columns + j)
+            var v3 = base.unsafe_load[width=W]((i + 3) * columns + j)
             for k in range(inner):
-                var rhs_vector = rhs.load[width=W](k * columns + j)
+                var rhs_vector = rhs.unsafe_load[width=W](k * columns + j)
                 v0 += lhs[i * inner + k] * rhs_vector
                 v1 += lhs[(i + 1) * inner + k] * rhs_vector
                 v2 += lhs[(i + 2) * inner + k] * rhs_vector
@@ -199,11 +199,11 @@ def matrix_multiply_transpose_add(
             var v3 = SIMD[DType.float64, W](0.0)
             var k = 0
             while k + W <= inner:
-                var lhs_vector = lhs.load[width=W](i * inner + k)
-                v0 += lhs_vector * rhs.load[width=W](j * inner + k)
-                v1 += lhs_vector * rhs.load[width=W]((j + 1) * inner + k)
-                v2 += lhs_vector * rhs.load[width=W]((j + 2) * inner + k)
-                v3 += lhs_vector * rhs.load[width=W]((j + 3) * inner + k)
+                var lhs_vector = lhs.unsafe_load[width=W](i * inner + k)
+                v0 += lhs_vector * rhs.unsafe_load[width=W](j * inner + k)
+                v1 += lhs_vector * rhs.unsafe_load[width=W]((j + 1) * inner + k)
+                v2 += lhs_vector * rhs.unsafe_load[width=W]((j + 2) * inner + k)
+                v3 += lhs_vector * rhs.unsafe_load[width=W]((j + 3) * inner + k)
                 k += W
             var r0 = v0.reduce_add()
             var r1 = v1.reduce_add()
@@ -248,11 +248,11 @@ def matrix_multiply_transpose(
             var v3 = SIMD[DType.float64, W](0.0)
             var k = 0
             while k + W <= inner:
-                var lhs_vector = lhs.load[width=W](i * inner + k)
-                v0 += lhs_vector * rhs.load[width=W](j * inner + k)
-                v1 += lhs_vector * rhs.load[width=W]((j + 1) * inner + k)
-                v2 += lhs_vector * rhs.load[width=W]((j + 2) * inner + k)
-                v3 += lhs_vector * rhs.load[width=W]((j + 3) * inner + k)
+                var lhs_vector = lhs.unsafe_load[width=W](i * inner + k)
+                v0 += lhs_vector * rhs.unsafe_load[width=W](j * inner + k)
+                v1 += lhs_vector * rhs.unsafe_load[width=W]((j + 1) * inner + k)
+                v2 += lhs_vector * rhs.unsafe_load[width=W]((j + 2) * inner + k)
+                v3 += lhs_vector * rhs.unsafe_load[width=W]((j + 3) * inner + k)
                 k += W
             var r0 = v0.reduce_add()
             var r1 = v1.reduce_add()
@@ -313,11 +313,11 @@ def solve_spd_rows(rhs: Ptr, dst: Ptr, chol: Ptr, rows: Int, d: Int):
             var v3 = SIMD[DType.float64, W](0.0)
             var k = 0
             while k + W <= i:
-                var factor = chol.load[width=W](i * d + k)
-                v0 += factor * s0.load[width=W](k)
-                v1 += factor * s1.load[width=W](k)
-                v2 += factor * s2.load[width=W](k)
-                v3 += factor * s3.load[width=W](k)
+                var factor = chol.unsafe_load[width=W](i * d + k)
+                v0 += factor * s0.unsafe_load[width=W](k)
+                v1 += factor * s1.unsafe_load[width=W](k)
+                v2 += factor * s2.unsafe_load[width=W](k)
+                v3 += factor * s3.unsafe_load[width=W](k)
                 k += W
             var a0 = v0.reduce_add()
             var a1 = v1.reduce_add()
@@ -343,11 +343,11 @@ def solve_spd_rows(rhs: Ptr, dst: Ptr, chol: Ptr, rows: Int, d: Int):
             var v3 = SIMD[DType.float64, W](0.0)
             var k = i + 1
             while k + W <= d:
-                var factor = chol.load[width=W](i * d + k)
-                v0 += factor * s0.load[width=W](k)
-                v1 += factor * s1.load[width=W](k)
-                v2 += factor * s2.load[width=W](k)
-                v3 += factor * s3.load[width=W](k)
+                var factor = chol.unsafe_load[width=W](i * d + k)
+                v0 += factor * s0.unsafe_load[width=W](k)
+                v1 += factor * s1.unsafe_load[width=W](k)
+                v2 += factor * s2.unsafe_load[width=W](k)
+                v3 += factor * s3.unsafe_load[width=W](k)
                 k += W
             var a0 = v0.reduce_add()
             var a1 = v1.reduce_add()
